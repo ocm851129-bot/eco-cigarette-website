@@ -6,8 +6,11 @@ import {
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { auth, db } from './config'
 
-/* Kakao OAuth 팝업으로 access_token 획득 */
-function openKakaoPopup(jsKey: string, redirectUri: string): Promise<string> {
+const REST_KEY    = import.meta.env.VITE_KAKAO_REST_KEY as string
+const REDIRECT_URI = window.location.origin
+
+/* 팝업으로 authorization code 획득 */
+function openKakaoPopup(): Promise<string> {
   return new Promise((resolve, reject) => {
     const w = 500, h = 700
     const l = Math.round((screen.width  - w) / 2)
@@ -15,9 +18,9 @@ function openKakaoPopup(jsKey: string, redirectUri: string): Promise<string> {
 
     const url =
       `https://kauth.kakao.com/oauth/authorize` +
-      `?client_id=${jsKey}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&response_type=token`
+      `?client_id=${REST_KEY}` +
+      `&redirect_uri=${encodeURIComponent(REDIRECT_URI)}` +
+      `&response_type=code`
 
     const popup = window.open(
       url, 'kakaoLogin',
@@ -38,43 +41,60 @@ function openKakaoPopup(jsKey: string, redirectUri: string): Promise<string> {
         }
 
         const href = popup.location.href
-        if (href.startsWith(window.location.origin)) {
-          // hash에서 access_token 추출
-          const hash   = new URLSearchParams(popup.location.hash.substring(1))
-          const token  = hash.get('access_token')
-          const errMsg = hash.get('error_description')
+        if (href.startsWith(REDIRECT_URI)) {
+          const params = new URLSearchParams(popup.location.search)
+          const code   = params.get('code')
+          const error  = params.get('error_description') || params.get('error')
 
           clearInterval(check)
           popup.close()
 
-          if (token)  resolve(token)
-          else        reject(new Error(errMsg || '토큰을 받지 못했습니다.'))
+          if (code)  resolve(code)
+          else       reject(new Error(error || '인증 코드를 받지 못했습니다.'))
         }
       } catch {
-        // 카카오 도메인에 있는 동안 cross-origin 오류 → 무시
+        // 카카오 도메인 cross-origin 오류 → 무시
       }
     }, 300)
   })
 }
 
+/* code → access_token 교환 */
+async function getAccessToken(code: string): Promise<string> {
+  const res = await fetch('https://kauth.kakao.com/oauth/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' },
+    body: new URLSearchParams({
+      grant_type:   'authorization_code',
+      client_id:    REST_KEY,
+      redirect_uri: REDIRECT_URI,
+      code,
+    }),
+  })
+
+  if (!res.ok) throw new Error('카카오 토큰 교환 실패')
+  const data = await res.json()
+  if (data.error) throw new Error(data.error_description || data.error)
+  return data.access_token
+}
+
 /* 카카오 로그인 메인 함수 */
 export async function signInWithKakao(): Promise<void> {
-  const jsKey      = import.meta.env.VITE_KAKAO_JS_KEY as string
-  const redirectUri = window.location.origin  // 슬래시 없음
-
-  if (!jsKey || jsKey.includes('여기에')) {
-    throw new Error('카카오 JavaScript 키가 설정되지 않았습니다.')
+  if (!REST_KEY || REST_KEY.includes('여기에')) {
+    throw new Error('카카오 REST API 키가 설정되지 않았습니다.')
   }
 
-  // 1. 팝업으로 access_token 획득
-  const accessToken = await openKakaoPopup(jsKey, redirectUri)
+  // 1. 팝업으로 code 획득
+  const code = await openKakaoPopup()
 
-  // 2. 카카오 사용자 정보 요청
+  // 2. code → access_token
+  const accessToken = await getAccessToken(code)
+
+  // 3. 사용자 정보 요청
   const res = await fetch('https://kapi.kakao.com/v2/user/me', {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
-
-  if (!res.ok) throw new Error('카카오 사용자 정보를 가져오지 못했습니다.')
+  if (!res.ok) throw new Error('카카오 사용자 정보 요청 실패')
 
   const kakaoUser = await res.json()
 
@@ -88,14 +108,12 @@ export async function signInWithKakao(): Promise<void> {
                   || kakaoUser.properties?.profile_image
                   || null
 
-  // 3. Firebase Auth 로그인 또는 신규 가입
+  // 4. Firebase Auth 연동
   const dummyPw = `Kakao!${kakaoId}#Eco2024`
 
   try {
-    // 기존 유저 → 로그인
     await signInWithEmailAndPassword(auth, kakaoEmail, dummyPw)
   } catch {
-    // 신규 유저 → 생성
     const { user } = await createUserWithEmailAndPassword(auth, kakaoEmail, dummyPw)
     await updateProfile(user, { displayName: kakaoName, photoURL: kakaoPhoto })
     await setDoc(doc(db, 'users', user.uid), {
