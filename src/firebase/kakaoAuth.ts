@@ -38,7 +38,7 @@ function openKakaoPopup(jsKey: string, redirectUri: string): Promise<string> {
         }
 
         const href = popup.location.href
-        if (href.startsWith(redirectUri)) {
+        if (href.startsWith(window.location.origin)) {
           // hash에서 access_token 추출
           const hash   = new URLSearchParams(popup.location.hash.substring(1))
           const token  = hash.get('access_token')
@@ -60,7 +60,7 @@ function openKakaoPopup(jsKey: string, redirectUri: string): Promise<string> {
 /* 카카오 로그인 메인 함수 */
 export async function signInWithKakao(): Promise<void> {
   const jsKey      = import.meta.env.VITE_KAKAO_JS_KEY as string
-  const redirectUri = window.location.origin + '/'
+  const redirectUri = window.location.origin  // 슬래시 없음
 
   if (!jsKey || jsKey.includes('여기에')) {
     throw new Error('카카오 JavaScript 키가 설정되지 않았습니다.')
