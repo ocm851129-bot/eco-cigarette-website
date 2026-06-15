@@ -1,14 +1,34 @@
 import { useEffect, useRef, useState } from 'react'
 import RevealLayer from './RevealLayer'
+import { subscribeBanners } from '../firebase/firestore'
 
-const BG_IMAGE_1 = 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&q=95'
-const BG_IMAGE_2 = 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=1920&q=95'
+const DEFAULT_BG1 = 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&q=95'
+const DEFAULT_BG2 = 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=1920&q=95'
 
 export default function HeroSection() {
   const mouseRef  = useRef({ x: -999, y: -999 })
   const smoothRef = useRef({ x: -999, y: -999 })
   const rafRef    = useRef<number>(0)
   const [cursorPos, setCursorPos] = useState({ x: -999, y: -999 })
+
+  // Firestore 배너 실시간 연동
+  const [banners, setBanners] = useState<any[]>([])
+  const [bannerIdx, setBannerIdx] = useState(0)
+
+  useEffect(() => {
+    const unsub = subscribeBanners(data => setBanners(data))
+    return unsub
+  }, [])
+
+  useEffect(() => {
+    if (banners.length <= 1) return
+    const id = setInterval(() => setBannerIdx(i => (i + 1) % banners.length), 6000)
+    return () => clearInterval(id)
+  }, [banners.length])
+
+  const currentBanner = banners[bannerIdx]
+  const BG_IMAGE_1 = currentBanner?.imageUrl || DEFAULT_BG1
+  const BG_IMAGE_2 = DEFAULT_BG2
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
