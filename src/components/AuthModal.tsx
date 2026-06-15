@@ -1,18 +1,34 @@
 import { useState } from 'react'
 import { X, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { signInWithKakao } from '../firebase/kakaoAuth'
 import toast from 'react-hot-toast'
 
 interface Props { onClose: () => void }
 
 export default function AuthModal({ onClose }: Props) {
   const { login, signup } = useAuth()
-  const [mode, setMode]       = useState<'login' | 'signup'>('login')
-  const [name, setName]       = useState('')
-  const [email, setEmail]     = useState('')
-  const [pw, setPw]           = useState('')
-  const [showPw, setShowPw]   = useState(false)
-  const [loading, setLoading] = useState(false)
+  const [mode, setMode]         = useState<'login' | 'signup'>('login')
+  const [name, setName]         = useState('')
+  const [email, setEmail]       = useState('')
+  const [pw, setPw]             = useState('')
+  const [showPw, setShowPw]     = useState(false)
+  const [loading, setLoading]   = useState(false)
+  const [kakaoLoading, setKakaoLoading] = useState(false)
+
+  async function handleKakaoLogin() {
+    setKakaoLoading(true)
+    try {
+      await signInWithKakao()
+      toast.success('카카오로 로그인됐습니다! 🎉')
+      onClose()
+    } catch (err: any) {
+      toast.error('카카오 로그인에 실패했습니다.')
+      console.error(err)
+    } finally {
+      setKakaoLoading(false)
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -122,7 +138,37 @@ export default function AuthModal({ onClose }: Props) {
           </button>
         </form>
 
-        <p className="text-center text-white/40 text-sm mt-6">
+        {/* 구분선 */}
+        <div className="flex items-center gap-3 mt-6">
+          <div className="flex-1 h-px bg-white/10" />
+          <span className="text-white/30 text-xs">또는</span>
+          <div className="flex-1 h-px bg-white/10" />
+        </div>
+
+        {/* 카카오 로그인 버튼 */}
+        <button
+          type="button"
+          onClick={handleKakaoLogin}
+          disabled={kakaoLoading}
+          className="w-full mt-4 py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all"
+          style={{ background: '#FEE500', color: '#191919' }}
+          onMouseEnter={e => (e.currentTarget.style.background = '#F5DC00')}
+          onMouseLeave={e => (e.currentTarget.style.background = '#FEE500')}
+        >
+          {kakaoLoading ? (
+            <Loader2 size={18} className="animate-spin" style={{ color: '#191919' }} />
+          ) : (
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path fillRule="evenodd" clipRule="evenodd"
+                d="M9 0.5C4.03 0.5 0 3.73 0 7.72c0 2.56 1.71 4.82 4.3 6.11L3.22 17.1a.37.37 0 0 0 .54.42l4.09-2.71c.38.05.77.07 1.15.07 4.97 0 9-3.23 9-7.22S13.97.5 9 .5z"
+                fill="#191919"
+              />
+            </svg>
+          )}
+          {kakaoLoading ? '로그인 중...' : '카카오로 계속하기'}
+        </button>
+
+        <p className="text-center text-white/40 text-sm mt-5">
           {mode === 'login' ? '아직 계정이 없으신가요?' : '이미 계정이 있으신가요?'}
           {' '}
           <button onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
